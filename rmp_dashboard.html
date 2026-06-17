@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RateMyProfessors Dashboard</title>
+<style>
+  :root {
+    --teal-dark: #1a5276;
+    --teal-mid: #2980b9;
+    --teal-light: #aed6f1;
+    --teal-bar-low: #d6eaf8;
+    --teal-bar-high: #1a5276;
+    --bg: #f4f6f8;
+    --white: #ffffff;
+    --border: #d5d8dc;
+    --text: #1c2833;
+    --text-muted: #7f8c8d;
+    --header-bg: #eaf2ff;
+    --row-alt: #f8fbff;
+    --orange-bar: #e67e22;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  /* ── Top bar ── */
+  #topbar {
+    background: var(--teal-dark);
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  #topbar h1 { font-size: 18px; font-weight: 600; flex: 1; }
+  #topbar label { font-size: 12px; opacity: .85; }
+  #topbar input[type=file] {
+    font-size: 12px; color: white;
+    background: rgba(255,255,255,.15);
+    border: 1px solid rgba(255,255,255,.4);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  #topbar input[type=file]::file-selector-button {
+    background: rgba(255,255,255,.25);
+    border: none; color: white;
+    padding: 3px 8px; border-radius: 3px;
+    cursor: pointer; margin-right: 8px;
+  }
+  #status-msg { font-size: 12px; opacity: .8; }
+
+  /* Run scraper button */
+  #run-btn {
+    background: #27ae60;
+    border: none; color: white;
+    padding: 6px 14px; border-radius: 5px;
+    font-size: 12px; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+    transition: background .15s;
+  }
+  #run-btn:hover:not(:disabled) { background: #1e8449; }
+  #run-btn:disabled { background: #888; cursor: not-allowed; }
+  #run-btn .spinner {
+    display: none;
+    width: 12px; height: 12px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  #run-btn.running .spinner { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Log drawer */
+  #log-drawer {
+    display: none;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 200px;
+    background: #1c2833;
+    color: #a9cce3;
+    font-family: 'Consolas', monospace;
+    font-size: 11px;
+    z-index: 100;
+    border-top: 2px solid var(--teal-mid);
+  }
+  #log-drawer-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 12px;
+    background: var(--teal-dark);
+    color: white; font-size: 11px; font-weight: 600;
+  }
+  #log-close {
+    background: none; border: none; color: white;
+    cursor: pointer; font-size: 14px; line-height: 1;
+  }
+  #log-output {
+    height: calc(200px - 26px);
+    overflow-y: auto;
+    padding: 6px 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  #log-output .log-done  { color: #58d68d; }
+  #log-output .log-error { color: #e74c3c; }
+
+  /* ── Layout ── */
+  #app { display: flex; gap: 0; height: calc(100vh - 50px); overflow: hidden; }
+
+  #main-content {
+    flex: 1;
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    overflow: hidden;
+  }
+
+  /* ── Filter sidebar ── */
+  #sidebar {
+    width: 220px;
+    background: var(--white);
+    border-left: 1px solid var(--border);
+    padding: 14px 12px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .filter-section h3 {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--teal-dark);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+  }
+
+  /* School checkboxes */
+  .check-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .check-item input[type=checkbox] { accent-color: var(--teal-mid); cursor: pointer; }
+  .check-item label { cursor: pointer; font-size: 12px; }
+
+  /* Pathway chips */
+  #pathway-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .pathway-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background .15s;
+    user-select: none;
+  }
+  .pathway-chip:hover { background: var(--teal-light); }
+  .pathway-chip.active { background: var(--teal-light); }
+  .pathway-chip input[type=checkbox] { accent-color: var(--teal-mid); cursor: pointer; }
+  .pathway-chip label { cursor: pointer; font-size: 12px; flex: 1; }
+  .pathway-count {
+    font-size: 10px;
+    color: var(--text-muted);
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 1px 5px;
+  }
+
+  /* Sliders */
+  .slider-group { display: flex; flex-direction: column; gap: 6px; }
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+  }
+  .slider-row input[type=range] {
+    flex: 1;
+    accent-color: var(--teal-mid);
+  }
+  .slider-val {
+    min-width: 36px;
+    text-align: right;
+    font-size: 11px;
+    color: var(--teal-dark);
+    font-weight: 600;
+  }
+  .slider-label { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+
+  /* Date inputs */
+  .date-row { display: flex; gap: 6px; }
+  .date-row input[type=date] {
+    flex: 1;
+    font-size: 11px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 5px;
+    color: var(--text);
+    background: var(--white);
+  }
+
+  /* Sort direction */
+  .sort-row {
+    display: flex; gap: 8px;
+    font-size: 11px;
+  }
+  .sort-row select {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 5px;
+    font-size: 11px;
+    color: var(--text);
+    background: var(--white);
+  }
+
+  /* ── Count bar ── */
+  #count-bar {
+    background: var(--header-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  #count-bar strong { color: var(--teal-dark); }
+
+  /* ── Tables wrapper ── */
+  .table-panel {
+    flex: 1;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .table-panel h2 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--white);
+    background: var(--teal-dark);
+    padding: 8px 12px;
+    letter-spacing: .3px;
+  }
+  .table-scroll { flex: 1; overflow-y: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  thead { position: sticky; top: 0; z-index: 2; }
+  thead th {
+    background: var(--header-bg);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--teal-dark);
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    padding: 6px 8px;
+    border-bottom: 2px solid var(--teal-mid);
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  thead th:hover { background: var(--teal-light); }
+  thead th .sort-arrow { margin-left: 3px; opacity: .5; font-size: 10px; }
+  thead th.sorted .sort-arrow { opacity: 1; color: var(--teal-mid); }
+
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover { background: #d6eaf8; }
+  td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Column widths — left table */
+  #left-table col.col-pathway { width: 70px; }
+  #left-table col.col-name    { width: 140px; }
+  #left-table col.col-school  { width: 42px; }
+  #left-table col.col-bar     { }
+
+  /* Column widths — right table */
+  #right-table col.col-pathway { width: 70px; }
+  #right-table col.col-name    { width: 140px; }
+  #right-table col.col-school  { width: 42px; }
+  #right-table col.col-bar     { }
+
+  .pathway-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--teal-dark);
+    background: var(--teal-light);
+    border-radius: 3px;
+    padding: 1px 4px;
+    max-width: 62px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .school-tag {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    color: white;
+    border-radius: 3px;
+    padding: 1px 4px;
+    max-width: 38px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .school-bc  { background: #27ae60; }
+  .school-fau { background: #8e44ad; }
+  .school-fiu { background: #e67e22; }
+
+  /* Rating / count bar cell */
+  .bar-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .bar-bg {
+    flex: 1;
+    height: 14px;
+    background: var(--teal-bar-low);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    background: var(--teal-bar-high);
+    border-radius: 2px;
+    transition: width .1s;
+  }
+  .bar-fill.count-fill { background: var(--teal-mid); }
+  .bar-num {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--teal-dark);
+    min-width: 28px;
+    text-align: right;
+  }
+
+  /* Empty state */
+  #empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    gap: 12px;
+    text-align: center;
+    padding: 40px;
+  }
+  #empty-state .icon { font-size: 48px; }
+  #empty-state p { font-size: 14px; max-width: 320px; line-height: 1.5; }
+
+  /* Reset button */
+  #reset-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  #reset-btn:hover { background: var(--teal-light); color: var(--teal-dark); }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>RateMyProfessors — Broward College · FAU · FIU</h1>
+  <button id="run-btn" title="Run all_schools_rmp.py via server.py, then auto-load results">
+    <span class="spinner"></span>
+    <span id="run-label">&#9654; Run Scraper &amp; Refresh</span>
+  </button>
+  <label>Load CSV manually:
+    <input type="file" id="csv-input" accept=".csv">
+  </label>
+  <span id="status-msg">Upload CSV or click Run Scraper (requires server.py running)</span>
+</div>
+
+<div id="app">
+  <!-- Main tables -->
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+    <div id="count-bar" style="display:none;">
+      Showing <strong id="visible-count">0</strong> of <strong id="total-count">0</strong> professors
+    </div>
+    <div id="main-content">
+      <div id="empty-state-wrapper" style="flex:1;display:flex;align-items:center;justify-content:center;">
+        <div id="empty-state">
+          <div class="icon">📊</div>
+          <p>Upload your <strong>all_schools_rmp_cleaned.csv</strong> file to explore professor ratings across Broward College, FAU, and FIU.</p>
+          <p style="font-size:12px;">Run <code>all_schools_rmp.py</code> to generate the CSV.</p>
+        </div>
+      </div>
+
+      <!-- Left table: Professor Rating -->
+      <div class="table-panel" id="left-panel" style="display:none;">
+        <h2>Professor Rating</h2>
+        <div class="table-scroll">
+          <table id="left-table">
+            <colgroup>
+              <col class="col-pathway">
+              <col class="col-name">
+              <col class="col-school">
+              <col class="col-bar">
+            </colgroup>
+            <thead>
+              <tr>
+                <th data-col="pathway">Pathway <span class="sort-arrow">▲</span></th>
+                <th data-col="name">Full Name <span class="sort-arrow">▲</span></th>
+                <th data-col="school">Sch. <span class="sort-arrow">▲</span></th>
+                <th data-col="avg_rating">Avg Rating <span class="sort-arrow">▲</span></th>
+              </tr>
+            </thead>
+            <tbody id="left-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Right table: Number of Ratings -->
+      <div class="table-panel" id="right-panel" style="display:none;">
+        <h2>Number of Ratings</h2>
+        <div class="table-scroll">
+          <table id="right-table">
+            <colgroup>
+              <col class="col-pathway">
+              <col class="col-name">
+              <col class="col-school">
+              <col class="col-bar">
+            </colgroup>
+            <thead>
+              <tr>
+                <th data-col="pathway">Pathway <span class="sort-arrow">▲</span></th>
+                <th data-col="name">Full Name <span class="sort-arrow">▲</span></th>
+                <th data-col="school">Sch. <span class="sort-arrow">▲</span></th>
+                <th data-col="num_ratings">Num Ratings <span class="sort-arrow">▲</span></th>
+              </tr>
+            </thead>
+            <tbody id="right-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar filters -->
+  <div id="sidebar">
+
+    <div class="filter-section">
+      <h3>School</h3>
+      <div id="school-filters"></div>
+    </div>
+
+    <div class="filter-section">
+      <h3>Pathway (group)</h3>
+      <div id="pathway-filters"></div>
+    </div>
+
+    <div class="filter-section">
+      <h3>Avg Rating</h3>
+      <div class="slider-group">
+        <div class="slider-row">
+          <span class="slider-label">Min</span>
+          <input type="range" id="min-rating" min="0" max="5" step="0.1" value="0">
+          <span class="slider-val" id="min-rating-val">0</span>
+        </div>
+        <div class="slider-row">
+          <span class="slider-label">Max</span>
+          <input type="range" id="max-rating" min="0" max="5" step="0.1" value="5">
+          <span class="slider-val" id="max-rating-val">5</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <h3>Num Ratings</h3>
+      <div class="slider-group">
+        <div class="slider-row">
+          <span class="slider-label">Min</span>
+          <input type="range" id="min-count" min="0" max="1000" step="1" value="0">
+          <span class="slider-val" id="min-count-val">0</span>
+        </div>
+        <div class="slider-row">
+          <span class="slider-label">Max</span>
+          <input type="range" id="max-count" min="0" max="1000" step="1" value="1000">
+          <span class="slider-val" id="max-count-val">1000+</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <h3>Most Recent Rating</h3>
+      <div class="date-row">
+        <input type="date" id="date-from" title="From">
+        <input type="date" id="date-to" title="To">
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <h3>Sort By</h3>
+      <div class="sort-row">
+        <select id="sort-col">
+          <option value="name">Name</option>
+          <option value="pathway">Pathway</option>
+          <option value="avg_rating">Avg Rating</option>
+          <option value="num_ratings">Num Ratings</option>
+          <option value="school">School</option>
+        </select>
+        <select id="sort-dir">
+          <option value="asc">A → Z / Low → High</option>
+          <option value="desc">Z → A / High → Low</option>
+        </select>
+      </div>
+    </div>
+
+    <button id="reset-btn">Reset Filters</button>
+  </div>
+</div>
+
+<!-- Log drawer (shown while scraper runs) -->
+<div id="log-drawer">
+  <div id="log-drawer-header">
+    <span id="log-title">Scraper Output</span>
+    <button id="log-close" title="Close log">&#x2715;</button>
+  </div>
+  <div id="log-output"></div>
+</div>
+
+<script>
+// ============================================================
+// SCRAPER BUTTON + POLLING
+// ============================================================
+const SERVER = "http://localhost:8766";
+let _pollTimer = null;
+
+const runBtn    = document.getElementById("run-btn");
+const runLabel  = document.getElementById("run-label");
+const logDrawer = document.getElementById("log-drawer");
+const logOutput = document.getElementById("log-output");
+const logTitle  = document.getElementById("log-title");
+const statusMsg = document.getElementById("status-msg");
+
+document.getElementById("log-close").addEventListener("click", () => {
+  logDrawer.style.display = "none";
+});
+
+// On page load, check if server is up and CSV exists
+window.addEventListener("load", () => {
+  fetch(`${SERVER}/status`, { signal: AbortSignal.timeout(2000) })
+    .then(r => r.json())
+    .then(s => {
+      if (s.csv_exists) {
+        statusMsg.textContent = `CSV available (updated ${s.csv_mtime}) — click Run to refresh or load manually`;
+        autoLoadFromServer();
+      } else {
+        statusMsg.textContent = "Server running — no CSV yet. Click Run Scraper to fetch data.";
+      }
+      if (s.status === "running") startPolling();
+    })
+    .catch(() => {
+      // Server not running — file upload mode only
+      statusMsg.textContent = "Upload CSV manually, or run server.py then refresh this page.";
+      runBtn.disabled = true;
+      runBtn.title = "server.py is not running";
+    });
+});
+
+runBtn.addEventListener("click", async () => {
+  try {
+    const res = await fetch(`${SERVER}/run`, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) {
+      statusMsg.textContent = `Error: ${data.error}`;
+      return;
+    }
+    startPolling();
+  } catch (e) {
+    statusMsg.textContent = "Cannot reach server.py — is it running?";
+  }
+});
+
+function startPolling() {
+  setRunning(true);
+  logDrawer.style.display = "block";
+  logOutput.textContent = "";
+  if (_pollTimer) clearInterval(_pollTimer);
+  _pollTimer = setInterval(pollStatus, 2000);
+}
+
+async function pollStatus() {
+  try {
+    const res  = await fetch(`${SERVER}/status`);
+    const data = await res.json();
+
+    // Update log
+    logOutput.innerHTML = data.log.map(line => {
+      if (line.startsWith("  ✓") || line.includes("Done") || line.includes("DONE"))
+        return `<span class="log-done">${escHtml(line)}</span>`;
+      if (line.startsWith("  ⚠") || line.toLowerCase().includes("error") || line.toLowerCase().includes("warn"))
+        return `<span class="log-error">${escHtml(line)}</span>`;
+      return escHtml(line);
+    }).join("\n");
+    logOutput.scrollTop = logOutput.scrollHeight;
+
+    if (data.status === "done") {
+      clearInterval(_pollTimer);
+      setRunning(false);
+      logTitle.textContent = `Scraper finished at ${data.finished}`;
+      statusMsg.textContent = `Scraper complete (${data.finished}) — loading data…`;
+      autoLoadFromServer();
+    } else if (data.status === "error") {
+      clearInterval(_pollTimer);
+      setRunning(false);
+      logTitle.textContent = `Scraper failed at ${data.finished}`;
+      statusMsg.textContent = "Scraper encountered an error — check the log below.";
+    } else {
+      const lines = data.log.length;
+      statusMsg.textContent = `Scraper running… (${lines} log lines) started ${data.started}`;
+    }
+  } catch (e) {
+    // server hiccup — keep polling
+  }
+}
+
+async function autoLoadFromServer() {
+  try {
+    const res  = await fetch(`${SERVER}/data`);
+    if (!res.ok) return;
+    const text = await res.text();
+    loadData(text);
+    statusMsg.textContent = `Loaded ${allData.length.toLocaleString()} professors from server`;
+  } catch (e) {
+    // server not available
+  }
+}
+
+function setRunning(yes) {
+  runBtn.disabled = yes;
+  runBtn.classList.toggle("running", yes);
+  runLabel.textContent = yes ? "Running…" : "▶ Run Scraper & Refresh";
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ============================================================
+// CSV PARSER (no dependencies)
+// ============================================================
+function parseCSV(text) {
+  const rows = [];
+  let i = 0, n = text.length;
+
+  while (i < n) {
+    const row = [];
+    while (i < n && text[i] !== '\n') {
+      if (text[i] === '"') {
+        i++;
+        let val = '';
+        while (i < n) {
+          if (text[i] === '"') {
+            i++;
+            if (text[i] === '"') { val += '"'; i++; }
+            else break;
+          } else {
+            val += text[i++];
+          }
+        }
+        row.push(val);
+        if (text[i] === ',') i++;
+      } else {
+        let val = '';
+        while (i < n && text[i] !== ',' && text[i] !== '\n') {
+          val += text[i++];
+        }
+        row.push(val);
+        if (text[i] === ',') i++;
+      }
+    }
+    if (text[i] === '\n') i++;
+    if (row.some(v => v !== '')) rows.push(row);
+  }
+  return rows;
+}
+
+// ============================================================
+// PATHWAY ABBREVIATIONS
+// ============================================================
+const PATHWAY_ABBR = {
+  "Arts, Humanities, Communication & Design": "AHCD",
+  "Business": "Business",
+  "Education": "Education",
+  "Health Sciences": "HealthSci",
+  "Industry, Manufacturing, Construction & Transportation": "IMCT",
+  "Institute of Public Safety": "IPS",
+  "STEM": "STEM",
+  "Social Behavioral Sciences & Human Services": "SBSHS",
+  "Other": "Other",
+};
+
+function abbr(pathway) {
+  const p = (pathway || "").trim();
+  if (PATHWAY_ABBR[p]) return PATHWAY_ABBR[p];
+  // multi-pathway
+  return p.split(";").map(s => PATHWAY_ABBR[s.trim()] || s.trim()).join(", ");
+}
+
+function schoolAbbr(school) {
+  const s = school.toLowerCase();
+  if (s.includes("broward")) return "BC";
+  if (s.includes("atlantic")) return "FAU";
+  if (s.includes("international")) return "FIU";
+  return school.substring(0, 3).toUpperCase();
+}
+
+function schoolClass(school) {
+  const s = school.toLowerCase();
+  if (s.includes("broward")) return "school-bc";
+  if (s.includes("atlantic")) return "school-fau";
+  if (s.includes("international")) return "school-fiu";
+  return "school-bc";
+}
+
+// ============================================================
+// STATE
+// ============================================================
+let allData = [];
+let filteredData = [];
+let leftSort  = { col: "avg_rating", dir: "desc" };
+let rightSort = { col: "num_ratings", dir: "desc" };
+let maxCount = 1000;
+
+const state = {
+  schools: new Set(),
+  pathways: new Set(),
+  minRating: 0,
+  maxRating: 5,
+  minCount: 0,
+  maxCount: 1000,
+  dateFrom: "",
+  dateTo: "",
+};
+
+// ============================================================
+// LOAD CSV
+// ============================================================
+document.getElementById("csv-input").addEventListener("change", function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById("status-msg").textContent = "Loading…";
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      loadData(ev.target.result);
+      document.getElementById("status-msg").textContent =
+        `Loaded ${allData.length.toLocaleString()} professors`;
+    } catch(err) {
+      document.getElementById("status-msg").textContent = "Error: " + err.message;
+    }
+  };
+  reader.readAsText(file, "UTF-8");
+});
+
+function loadData(csvText) {
+  const rows = parseCSV(csvText.trim());
+  if (rows.length < 2) throw new Error("CSV appears empty");
+
+  const header = rows[0].map(h => h.trim().toLowerCase().replace(/\s+/g, "_"));
+  const col = {};
+  header.forEach((h, i) => col[h] = i);
+
+  const required = ["first_name", "last_name", "pathway", "avg_rating", "num_ratings", "school"];
+  for (const r of required) {
+    if (col[r] === undefined) {
+      // try without school
+      if (r === "school") { col["school"] = null; }
+      else throw new Error(`Missing column: ${r}`);
+    }
+  }
+
+  allData = rows.slice(1).map(r => ({
+    first_name:        (r[col.first_name] || "").trim(),
+    last_name:         (r[col.last_name]  || "").trim(),
+    pathway:           (r[col.pathway]    || "").trim(),
+    school:            col.school !== null ? (r[col.school] || "").trim() : "Unknown",
+    avg_rating:        parseFloat(r[col.avg_rating]) || 0,
+    num_ratings:       parseInt(r[col.num_ratings])  || 0,
+    avg_difficulty:    parseFloat(r[col.avg_difficulty]) || 0,
+    would_take_again:  parseFloat(r[col.would_take_again_pct]) || null,
+    most_recent_rating: col.most_recent_rating !== undefined ? (r[col.most_recent_rating] || "").trim() : "",
+    tags:              col.tags !== undefined ? (r[col.tags] || "").trim() : "",
+  }));
+
+  // Build filter options
+  const schools  = [...new Set(allData.map(d => d.school))].sort();
+  const pathways = [...new Set(allData.flatMap(d =>
+    d.pathway ? d.pathway.split(";").map(p => p.trim()) : ["Other"]
+  ))].sort();
+
+  maxCount = Math.max(...allData.map(d => d.num_ratings), 100);
+  state.maxCount = maxCount;
+
+  // Init state
+  state.schools  = new Set(schools);
+  state.pathways = new Set(pathways);
+  state.minRating = 0;
+  state.maxRating = 5;
+  state.minCount  = 0;
+  state.maxCount  = maxCount;
+  state.dateFrom  = "";
+  state.dateTo    = "";
+
+  // Build sidebar
+  buildSchoolFilters(schools);
+  buildPathwayFilters(pathways);
+  initSliders();
+
+  // Show panels
+  document.getElementById("empty-state-wrapper").style.display = "none";
+  document.getElementById("left-panel").style.display  = "flex";
+  document.getElementById("right-panel").style.display = "flex";
+  document.getElementById("count-bar").style.display   = "flex";
+
+  applyFilters();
+}
+
+// ============================================================
+// BUILD SIDEBAR
+// ============================================================
+function buildSchoolFilters(schools) {
+  const container = document.getElementById("school-filters");
+  container.innerHTML = "";
+  schools.forEach(school => {
+    const div = document.createElement("div");
+    div.className = "check-item";
+    div.innerHTML = `
+      <input type="checkbox" id="sch-${school}" checked>
+      <label for="sch-${school}">${school.split(" ").slice(-1)[0] === "University"
+        ? school.split(" ").map(w => w[0]).join("") : school}</label>
+    `;
+    div.querySelector("input").addEventListener("change", e => {
+      if (e.target.checked) state.schools.add(school);
+      else state.schools.delete(school);
+      applyFilters();
+    });
+    container.appendChild(div);
+  });
+}
+
+function buildPathwayFilters(pathways) {
+  const container = document.getElementById("pathway-filters");
+  container.innerHTML = "";
+
+  // (All) toggle
+  const allDiv = document.createElement("div");
+  allDiv.className = "pathway-chip active";
+  allDiv.id = "pathway-all";
+  allDiv.innerHTML = `<input type="checkbox" id="pw-all" checked><label for="pw-all">(All)</label>`;
+  allDiv.querySelector("input").addEventListener("change", e => {
+    const checked = e.target.checked;
+    container.querySelectorAll("input[data-pw]").forEach(cb => {
+      cb.checked = checked;
+      cb.closest(".pathway-chip").classList.toggle("active", checked);
+    });
+    if (checked) pathways.forEach(p => state.pathways.add(p));
+    else state.pathways.clear();
+    applyFilters();
+  });
+  container.appendChild(allDiv);
+
+  pathways.forEach(pathway => {
+    const count = allData.filter(d =>
+      d.pathway.split(";").map(p => p.trim()).includes(pathway)
+    ).length;
+    const div = document.createElement("div");
+    div.className = "pathway-chip active";
+    div.innerHTML = `
+      <input type="checkbox" data-pw="${pathway}" checked>
+      <label>${abbr(pathway)}</label>
+      <span class="pathway-count">${count}</span>
+    `;
+    div.querySelector("input").addEventListener("change", e => {
+      if (e.target.checked) { state.pathways.add(pathway); div.classList.add("active"); }
+      else { state.pathways.delete(pathway); div.classList.remove("active"); }
+      // update (All)
+      const allChecked = pathways.every(p => state.pathways.has(p));
+      document.getElementById("pw-all").checked = allChecked;
+      document.getElementById("pathway-all").classList.toggle("active", allChecked);
+      applyFilters();
+    });
+    container.appendChild(div);
+  });
+}
+
+function initSliders() {
+  const minR = document.getElementById("min-rating");
+  const maxR = document.getElementById("max-rating");
+  const minC = document.getElementById("min-count");
+  const maxC = document.getElementById("max-count");
+
+  maxC.max = maxCount;
+  maxC.value = maxCount;
+  minC.max = maxCount;
+  minC.value = 0;
+  document.getElementById("max-count-val").textContent = maxCount + "+";
+
+  minR.addEventListener("input", () => {
+    state.minRating = parseFloat(minR.value);
+    if (state.minRating > state.maxRating) { state.maxRating = state.minRating; maxR.value = state.minRating; }
+    document.getElementById("min-rating-val").textContent = state.minRating.toFixed(1);
+    applyFilters();
+  });
+  maxR.addEventListener("input", () => {
+    state.maxRating = parseFloat(maxR.value);
+    if (state.maxRating < state.minRating) { state.minRating = state.maxRating; minR.value = state.maxRating; }
+    document.getElementById("max-rating-val").textContent = state.maxRating.toFixed(1);
+    applyFilters();
+  });
+  minC.addEventListener("input", () => {
+    state.minCount = parseInt(minC.value);
+    if (state.minCount > state.maxCount) { state.maxCount = state.minCount; maxC.value = state.minCount; }
+    document.getElementById("min-count-val").textContent = state.minCount;
+    applyFilters();
+  });
+  maxC.addEventListener("input", () => {
+    state.maxCount = parseInt(maxC.value);
+    if (state.maxCount < state.minCount) { state.minCount = state.maxCount; minC.value = state.maxCount; }
+    document.getElementById("max-count-val").textContent = state.maxCount >= maxCount ? maxCount + "+" : state.maxCount;
+    applyFilters();
+  });
+
+  document.getElementById("date-from").addEventListener("change", e => {
+    state.dateFrom = e.target.value; applyFilters();
+  });
+  document.getElementById("date-to").addEventListener("change", e => {
+    state.dateTo = e.target.value; applyFilters();
+  });
+}
+
+// ============================================================
+// FILTER
+// ============================================================
+function applyFilters() {
+  filteredData = allData.filter(d => {
+    // School
+    if (!state.schools.has(d.school)) return false;
+    // Pathway
+    const profs = d.pathway ? d.pathway.split(";").map(p => p.trim()) : ["Other"];
+    if (!profs.some(p => state.pathways.has(p))) return false;
+    // Rating
+    if (d.num_ratings > 0) {
+      if (d.avg_rating < state.minRating || d.avg_rating > state.maxRating) return false;
+    }
+    // Count
+    if (d.num_ratings < state.minCount) return false;
+    if (state.maxCount < maxCount && d.num_ratings > state.maxCount) return false;
+    // Date
+    if (state.dateFrom && d.most_recent_rating && d.most_recent_rating < state.dateFrom) return false;
+    if (state.dateTo   && d.most_recent_rating && d.most_recent_rating > state.dateTo)   return false;
+    return true;
+  });
+
+  document.getElementById("visible-count").textContent = filteredData.length.toLocaleString();
+  document.getElementById("total-count").textContent   = allData.length.toLocaleString();
+
+  renderTables();
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function sortData(data, col, dir) {
+  return [...data].sort((a, b) => {
+    let va, vb;
+    if (col === "name") {
+      va = (a.last_name + " " + a.first_name).toLowerCase();
+      vb = (b.last_name + " " + b.first_name).toLowerCase();
+    } else if (col === "pathway") {
+      va = abbr(a.pathway).toLowerCase();
+      vb = abbr(b.pathway).toLowerCase();
+    } else if (col === "school") {
+      va = schoolAbbr(a.school);
+      vb = schoolAbbr(b.school);
+    } else {
+      va = a[col] ?? 0;
+      vb = b[col] ?? 0;
+    }
+    if (va < vb) return dir === "asc" ? -1 : 1;
+    if (va > vb) return dir === "asc" ?  1 : -1;
+    return 0;
+  });
+}
+
+function ratingColor(rating) {
+  // 0=light, 5=dark teal
+  const pct = Math.min(rating / 5, 1);
+  const r = Math.round(214 - pct * (214 - 26));
+  const g = Math.round(234 - pct * (234 - 82));
+  const b = Math.round(248 - pct * (248 - 118));
+  return `rgb(${r},${g},${b})`;
+}
+
+function renderTables() {
+  const sortCol = document.getElementById("sort-col").value;
+  const sortDir = document.getElementById("sort-dir").value;
+
+  // Left table
+  let leftData = sortData(filteredData, leftSort.col, leftSort.dir);
+  // If sidebar sort is active, use it for primary sort
+  if (sortCol) leftData = sortData(leftData, sortCol, sortDir);
+  const maxRating = 5;
+  const leftBody = document.getElementById("left-body");
+  leftBody.innerHTML = leftData.map(d => {
+    const name = `${d.last_name}, ${d.first_name}`;
+    const pct  = (d.avg_rating / maxRating * 100).toFixed(1);
+    const color = ratingColor(d.avg_rating);
+    return `<tr>
+      <td><span class="pathway-tag" title="${d.pathway}">${abbr(d.pathway)}</span></td>
+      <td title="${name}">${name}</td>
+      <td><span class="school-tag ${schoolClass(d.school)}">${schoolAbbr(d.school)}</span></td>
+      <td>
+        <div class="bar-cell">
+          <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+          <span class="bar-num">${d.num_ratings > 0 ? d.avg_rating.toFixed(2) : '—'}</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+
+  // Right table — sorted by num_ratings desc by default
+  let rightData = sortData(filteredData, rightSort.col, rightSort.dir);
+  const maxN = Math.max(...rightData.map(d => d.num_ratings), 1);
+  const rightBody = document.getElementById("right-body");
+  rightBody.innerHTML = rightData.map(d => {
+    const name = `${d.last_name}, ${d.first_name}`;
+    const pct  = (d.num_ratings / maxN * 100).toFixed(1);
+    return `<tr>
+      <td><span class="pathway-tag" title="${d.pathway}">${abbr(d.pathway)}</span></td>
+      <td title="${name}">${name}</td>
+      <td><span class="school-tag ${schoolClass(d.school)}">${schoolAbbr(d.school)}</span></td>
+      <td>
+        <div class="bar-cell">
+          <div class="bar-bg"><div class="bar-fill count-fill" style="width:${pct}%;"></div></div>
+          <span class="bar-num">${d.num_ratings.toLocaleString()}</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+// ============================================================
+// COLUMN SORT (click headers)
+// ============================================================
+document.getElementById("left-table").querySelector("thead").addEventListener("click", e => {
+  const th = e.target.closest("th");
+  if (!th) return;
+  const col = th.dataset.col;
+  if (!col) return;
+  if (leftSort.col === col) leftSort.dir = leftSort.dir === "asc" ? "desc" : "asc";
+  else { leftSort.col = col; leftSort.dir = col === "avg_rating" ? "desc" : "asc"; }
+  updateSortArrows("left-table", leftSort);
+  renderTables();
+});
+
+document.getElementById("right-table").querySelector("thead").addEventListener("click", e => {
+  const th = e.target.closest("th");
+  if (!th) return;
+  const col = th.dataset.col;
+  if (!col) return;
+  if (rightSort.col === col) rightSort.dir = rightSort.dir === "asc" ? "desc" : "asc";
+  else { rightSort.col = col; rightSort.dir = col === "num_ratings" ? "desc" : "asc"; }
+  updateSortArrows("right-table", rightSort);
+  renderTables();
+});
+
+function updateSortArrows(tableId, sort) {
+  const table = document.getElementById(tableId);
+  table.querySelectorAll("thead th").forEach(th => {
+    th.classList.remove("sorted");
+    const arrow = th.querySelector(".sort-arrow");
+    if (!arrow) return;
+    if (th.dataset.col === sort.col) {
+      th.classList.add("sorted");
+      arrow.textContent = sort.dir === "asc" ? "▲" : "▼";
+    } else {
+      arrow.textContent = "▲";
+    }
+  });
+}
+
+// Sidebar sort dropdowns
+document.getElementById("sort-col").addEventListener("change", renderTables);
+document.getElementById("sort-dir").addEventListener("change", renderTables);
+
+// Reset
+document.getElementById("reset-btn").addEventListener("click", () => {
+  if (!allData.length) return;
+  // Rebuild from scratch
+  const schools  = [...new Set(allData.map(d => d.school))].sort();
+  const pathways = [...new Set(allData.flatMap(d =>
+    d.pathway ? d.pathway.split(";").map(p => p.trim()) : ["Other"]
+  ))].sort();
+  state.schools  = new Set(schools);
+  state.pathways = new Set(pathways);
+  state.minRating = 0; state.maxRating = 5;
+  state.minCount  = 0; state.maxCount  = maxCount;
+  state.dateFrom  = ""; state.dateTo   = "";
+
+  // Reset UI
+  document.getElementById("min-rating").value = 0;
+  document.getElementById("max-rating").value = 5;
+  document.getElementById("min-rating-val").textContent = "0";
+  document.getElementById("max-rating-val").textContent = "5";
+  document.getElementById("min-count").value = 0;
+  document.getElementById("max-count").value = maxCount;
+  document.getElementById("min-count-val").textContent = "0";
+  document.getElementById("max-count-val").textContent = maxCount + "+";
+  document.getElementById("date-from").value = "";
+  document.getElementById("date-to").value   = "";
+
+  document.querySelectorAll("#school-filters input").forEach(cb => cb.checked = true);
+  document.querySelectorAll("#pathway-filters input").forEach(cb => cb.checked = true);
+  document.querySelectorAll(".pathway-chip").forEach(chip => chip.classList.add("active"));
+
+  document.getElementById("sort-col").value = "name";
+  document.getElementById("sort-dir").value = "asc";
+
+  applyFilters();
+});
+</script>
+</body>
+</html>

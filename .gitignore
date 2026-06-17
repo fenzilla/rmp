@@ -1,0 +1,9 @@
+# Data files (too large / generated — run scraper locally)
+*.csv
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local server config
+.claude/
