@@ -584,24 +584,36 @@ document.getElementById("log-close").addEventListener("click", () => {
   logDrawer.style.display = "none";
 });
 
-// On page load, check if server is up and CSV exists
+// On page load: use embedded data if available, then check server
 window.addEventListener("load", () => {
+  // Load embedded (baked-in) data first so page works with no server
+  if (typeof EMBEDDED_CSV !== "undefined" && EMBEDDED_CSV) {
+    try {
+      loadData(EMBEDDED_CSV);
+      statusMsg.textContent = `Showing baked-in data (${allData.length.toLocaleString()} professors) — click Run Scraper to refresh`;
+    } catch(e) {
+      statusMsg.textContent = "Embedded data error: " + e.message;
+    }
+  }
+
+  // Then check if server is available for the Run button
   fetch(`${SERVER}/status`, { signal: AbortSignal.timeout(2000) })
     .then(r => r.json())
     .then(s => {
-      if (s.csv_exists) {
-        statusMsg.textContent = `CSV available (updated ${s.csv_mtime}) — click Run to refresh or load manually`;
-        autoLoadFromServer();
-      } else {
-        statusMsg.textContent = "Server running — no CSV yet. Click Run Scraper to fetch data.";
-      }
       if (s.status === "running") startPolling();
+      if (typeof EMBEDDED_CSV === "undefined") {
+        statusMsg.textContent = s.csv_exists
+          ? `Server ready — click Run Scraper to fetch fresh data`
+          : "Server running — no CSV yet. Click Run Scraper to fetch data.";
+      }
     })
     .catch(() => {
-      // Server not running — file upload mode only
-      statusMsg.textContent = "Upload CSV manually, or run server.py then refresh this page.";
+      // Server not running — that's fine if we have embedded data
+      if (typeof EMBEDDED_CSV === "undefined") {
+        statusMsg.textContent = "Upload CSV manually, or run server.py then refresh this page.";
+      }
       runBtn.disabled = true;
-      runBtn.title = "server.py is not running";
+      runBtn.title = "server.py is not running — run it locally to use this button";
     });
 });
 
@@ -627,6 +639,9 @@ function startPolling() {
   _pollTimer = setInterval(pollStatus, 2000);
 }
 
+let _lastDataRefresh = 0;
+const DATA_REFRESH_INTERVAL = 120000; // reload data every 2 minutes while running
+
 async function pollStatus() {
   try {
     const res  = await fetch(`${SERVER}/status`);
@@ -634,9 +649,9 @@ async function pollStatus() {
 
     // Update log
     logOutput.innerHTML = data.log.map(line => {
-      if (line.startsWith("  ✓") || line.includes("Done") || line.includes("DONE"))
+      if (line.includes("checkpoint") || line.includes("Done") || line.includes("DONE"))
         return `<span class="log-done">${escHtml(line)}</span>`;
-      if (line.startsWith("  ⚠") || line.toLowerCase().includes("error") || line.toLowerCase().includes("warn"))
+      if (line.toLowerCase().includes("error") || line.toLowerCase().includes("warn"))
         return `<span class="log-error">${escHtml(line)}</span>`;
       return escHtml(line);
     }).join("\n");
@@ -656,19 +671,28 @@ async function pollStatus() {
     } else {
       const lines = data.log.length;
       statusMsg.textContent = `Scraper running… (${lines} log lines) started ${data.started}`;
+
+      // Reload partial data every 2 minutes
+      const now = Date.now();
+      if (now - _lastDataRefresh > DATA_REFRESH_INTERVAL) {
+        _lastDataRefresh = now;
+        autoLoadFromServer(true);
+      }
     }
   } catch (e) {
     // server hiccup — keep polling
   }
 }
 
-async function autoLoadFromServer() {
+async function autoLoadFromServer(partial = false) {
   try {
     const res  = await fetch(`${SERVER}/data`);
     if (!res.ok) return;
     const text = await res.text();
     loadData(text);
-    statusMsg.textContent = `Loaded ${allData.length.toLocaleString()} professors from server`;
+    statusMsg.textContent = partial
+      ? `Live preview: ${allData.length.toLocaleString()} professors so far (scraper still running…)`
+      : `Loaded ${allData.length.toLocaleString()} professors from server`;
   } catch (e) {
     // server not available
   }

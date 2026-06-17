@@ -340,65 +340,6 @@ def _fetch_rating_details(professor_id):
     return sorted(courses), (min(dates) if dates else ""), (max(dates) if dates else "")
 
 
-def fetch_all_professors(school_id, school_label):
-    seen_ids, professors = set(), []
-    search_terms = [""] + list(string.ascii_lowercase)
-    for i, letter in enumerate(search_terms):
-        label = f"'{letter}'" if letter else "(blank)"
-        raw = _search_teachers(school_id, letter)
-        new_count = 0
-        for n in raw:
-            pid = n["id"]
-            if pid in seen_ids:
-                continue
-            seen_ids.add(pid)
-            new_count += 1
-            wta = n.get("wouldTakeAgainPercent")
-            raw_tags = n.get("teacherRatingTags") or []
-            tags_str = "; ".join(
-                f"{t['tagName']} ({t['tagCount']})"
-                for t in raw_tags if t.get("tagCount", 0) > 0
-            )
-            dist = n.get("ratingsDistribution") or {}
-            professors.append({
-                "school": school_label,
-                "first_name": n["firstName"],
-                "last_name": n["lastName"],
-                "department": n.get("department", ""),
-                "avg_rating": n.get("avgRating", 0),
-                "num_ratings": n.get("numRatings", 0),
-                "avg_difficulty": n.get("avgDifficulty", 0),
-                "would_take_again_pct": (
-                    round(wta, 1) if wta is not None and wta >= 0 else None
-                ),
-                "tags": tags_str,
-                "r1": dist.get("r1", 0), "r2": dist.get("r2", 0),
-                "r3": dist.get("r3", 0), "r4": dist.get("r4", 0),
-                "r5": dist.get("r5", 0),
-                "_id": pid,
-                "_num_ratings": n.get("numRatings", 0),
-            })
-        print(f"  [{i+1}/{len(search_terms)}] search={label:8s}  "
-              f"returned {len(raw):4d}  new {new_count:4d}  total {len(professors)}")
-        time.sleep(0.3)
-    return professors
-
-
-def fetch_course_codes(professors):
-    rated = [p for p in professors if p["_num_ratings"] > 0]
-    print(f"\n  Fetching course codes for {len(rated)} rated professors "
-          f"(~{len(rated) * 0.3 / 60:.0f} min)...")
-    for i, p in enumerate(rated):
-        courses, earliest, most_recent = _fetch_rating_details(p["_id"])
-        p["courses"] = "; ".join(courses)
-        p["earliest_rating"] = earliest
-        p["most_recent_rating"] = most_recent
-        if (i + 1) % 100 == 0 or (i + 1) == len(rated):
-            print(f"    [{i+1}/{len(rated)}] fetched")
-    for p in professors:
-        p.setdefault("courses", "")
-        p.setdefault("earliest_rating", "")
-        p.setdefault("most_recent_rating", "")
 
 
 # ==========================================================================
@@ -532,7 +473,7 @@ def clean_and_merge(professors):
 
     if all_unmapped:
         unique_unmapped = sorted(set(all_unmapped))
-        print(f"\n  ⚠  Unmapped departments (set to 'Other') — add to script to fix:")
+        print(f"\n  WARNING: Unmapped departments (set to 'Other') - add to script to fix:")
         for d in unique_unmapped:
             print(f"       - {d}")
 
@@ -552,6 +493,47 @@ COLS = [
 ]
 
 
+CHECKPOINT_EVERY = 50   # save partial CSV every N course-code fetches
+
+
+def _save_checkpoint(all_professors, label="checkpoint"):
+    """Clean, merge, and write whatever we have so far to the output CSV."""
+    if not all_professors:
+        return
+    try:
+        rows = clean_and_merge(all_professors)
+        with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=COLS, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(rows)
+        rated = sum(1 for r in rows if r["num_ratings"] and int(r["num_ratings"]) > 0)
+        print(f"  [checkpoint] {label} - {len(rows)} professors ({rated} rated) saved to {OUTPUT_FILE}")
+    except Exception as e:
+        print(f"  [checkpoint] WARNING: could not save - {e}")
+
+
+def fetch_course_codes_with_checkpoints(professors, all_professors_ref):
+    """Fetch course codes with periodic checkpoints."""
+    rated = [p for p in professors if p["_num_ratings"] > 0]
+    print(f"\n  Fetching course codes for {len(rated)} rated professors...")
+    for i, p in enumerate(rated):
+        courses, earliest, most_recent = _fetch_rating_details(p["_id"])
+        p["courses"] = "; ".join(courses)
+        p["earliest_rating"] = earliest
+        p["most_recent_rating"] = most_recent
+
+        if (i + 1) % CHECKPOINT_EVERY == 0:
+            print(f"    [{i+1}/{len(rated)}] fetched - saving checkpoint...")
+            _save_checkpoint(all_professors_ref, f"{i+1}/{len(rated)} course codes")
+        elif (i + 1) == len(rated):
+            print(f"    [{i+1}/{len(rated)}] fetched")
+
+    for p in professors:
+        p.setdefault("courses", "")
+        p.setdefault("earliest_rating", "")
+        p.setdefault("most_recent_rating", "")
+
+
 def main():
     all_professors = []
 
@@ -561,31 +543,81 @@ def main():
         print(f"{'='*60}")
         schools = get_school_ids(school_name)
         if not schools:
-            print(f"  ⚠ Could not find '{school_name}' — skipping.")
+            print(f"  WARNING: Could not find '{school_name}' - skipping.")
             continue
 
         for gql_id, legacy_id, label in schools:
             print(f"\n  --- {label} (legacyId={legacy_id}) ---")
-            profs = fetch_all_professors(gql_id, school_name)
+            profs = fetch_all_professors_with_checkpoints(gql_id, school_name, all_professors)
             all_professors.extend(profs)
 
     if not all_professors:
         sys.exit("No professors found. The API may have changed.")
 
     print(f"\n[Course codes] Fetching for all {len(all_professors)} professors...")
-    fetch_course_codes(all_professors)
+    fetch_course_codes_with_checkpoints(all_professors, all_professors)
 
-    print("\n[Cleaning & merging]...")
-    rows = clean_and_merge(all_professors)
+    print("\n[Final save]...")
+    _save_checkpoint(all_professors, "final")
+    print(f"  Done! Results saved to {OUTPUT_FILE}")
 
-    print(f"\n[Writing] {OUTPUT_FILE}...")
-    with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=COLS, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(rows)
+    try:
+        from google.colab import files
+        files.download(OUTPUT_FILE)
+        print("  Download started!")
+    except ImportError:
+        pass
 
-    rated = sum(1 for r in rows if r["num_ratings"] and int(r["num_ratings"]) > 0)
-    print(f"\n  Done! {len(rows)} professors ({rated} with ratings) → {OUTPUT_FILE}")
+
+def fetch_all_professors_with_checkpoints(school_id, school_label, all_professors_so_far):
+    """Like fetch_all_professors but saves a checkpoint after every letter."""
+    seen_ids, professors = set(), []
+    search_terms = [""] + list(string.ascii_lowercase)
+    for i, letter in enumerate(search_terms):
+        label = f"'{letter}'" if letter else "(blank)"
+        raw = _search_teachers(school_id, letter)
+        new_count = 0
+        for n in raw:
+            pid = n["id"]
+            if pid in seen_ids:
+                continue
+            seen_ids.add(pid)
+            new_count += 1
+            wta = n.get("wouldTakeAgainPercent")
+            raw_tags = n.get("teacherRatingTags") or []
+            tags_str = "; ".join(
+                f"{t['tagName']} ({t['tagCount']})"
+                for t in raw_tags if t.get("tagCount", 0) > 0
+            )
+            dist = n.get("ratingsDistribution") or {}
+            professors.append({
+                "school": school_label,
+                "first_name": n["firstName"],
+                "last_name": n["lastName"],
+                "department": n.get("department", ""),
+                "avg_rating": n.get("avgRating", 0),
+                "num_ratings": n.get("numRatings", 0),
+                "avg_difficulty": n.get("avgDifficulty", 0),
+                "would_take_again_pct": (
+                    round(wta, 1) if wta is not None and wta >= 0 else None
+                ),
+                "tags": tags_str,
+                "r1": dist.get("r1", 0), "r2": dist.get("r2", 0),
+                "r3": dist.get("r3", 0), "r4": dist.get("r4", 0),
+                "r5": dist.get("r5", 0),
+                "_id": n["id"],
+                "_num_ratings": n.get("numRatings", 0),
+            })
+        print(f"  [{i+1}/{len(search_terms)}] search={label:8s}  "
+              f"returned {len(raw):4d}  new {new_count:4d}  total {len(professors)}")
+
+        # Checkpoint after every letter
+        combined = all_professors_so_far + professors
+        if combined:
+            _save_checkpoint(combined, f"{school_label} letter={label}")
+
+        time.sleep(0.3)
+    return professors
 
     # Auto-download in Google Colab
     try:
