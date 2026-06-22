@@ -446,7 +446,7 @@
             </colgroup>
             <thead>
               <tr>
-                <th data-col="pathway">Pathway <span class="sort-arrow">▲</span></th>
+                <th data-col="pathway">Subject <span class="sort-arrow">▲</span></th>
                 <th data-col="name">Full Name <span class="sort-arrow">▲</span></th>
                 <th data-col="school">Sch. <span class="sort-arrow">▲</span></th>
                 <th data-col="avg_rating">Avg Rating <span class="sort-arrow">▲</span></th>
@@ -470,7 +470,7 @@
             </colgroup>
             <thead>
               <tr>
-                <th data-col="pathway">Pathway <span class="sort-arrow">▲</span></th>
+                <th data-col="pathway">Subject <span class="sort-arrow">▲</span></th>
                 <th data-col="name">Full Name <span class="sort-arrow">▲</span></th>
                 <th data-col="school">Sch. <span class="sort-arrow">▲</span></th>
                 <th data-col="num_ratings">Num Ratings <span class="sort-arrow">▲</span></th>
@@ -492,7 +492,7 @@
     </div>
 
     <div class="filter-section">
-      <h3>Pathway (group)</h3>
+      <h3>Subject (course prefix)</h3>
       <div id="pathway-filters"></div>
     </div>
 
@@ -754,23 +754,9 @@ function parseCSV(text) {
 // ============================================================
 // PATHWAY ABBREVIATIONS
 // ============================================================
-const PATHWAY_ABBR = {
-  "Arts, Humanities, Communication & Design": "AHCD",
-  "Business": "Business",
-  "Education": "Education",
-  "Health Sciences": "HealthSci",
-  "Industry, Manufacturing, Construction & Transportation": "IMCT",
-  "Institute of Public Safety": "IPS",
-  "STEM": "STEM",
-  "Social Behavioral Sciences & Human Services": "SBSHS",
-  "Other": "Other",
-};
-
-function abbr(pathway) {
-  const p = (pathway || "").trim();
-  if (PATHWAY_ABBR[p]) return PATHWAY_ABBR[p];
-  // multi-pathway
-  return p.split(";").map(s => PATHWAY_ABBR[s.trim()] || s.trim()).join(", ");
+function abbr(subjects) {
+  // subjects are already short codes like "MAT; ENC; BIO"
+  return (subjects || "").split(";").map(s => s.trim()).filter(Boolean).join(", ");
 }
 
 function schoolAbbr(school) {
@@ -849,7 +835,7 @@ function loadData(csvText) {
   allData = rows.slice(1).map(r => ({
     first_name:        (r[col.first_name] || "").trim(),
     last_name:         (r[col.last_name]  || "").trim(),
-    pathway:           (r[col.pathway]    || "").trim(),
+    pathway:           (r[col.subjects] || r[col.pathway] || "").trim(),
     school:            col.school !== null ? (r[col.school] || "").trim() : "Unknown",
     avg_rating:        parseFloat(r[col.avg_rating]) || 0,
     num_ratings:       parseInt(r[col.num_ratings])  || 0,

@@ -37,9 +37,29 @@ SCHOOLS_TO_SCRAPE = [
 ]
 
 # ==========================================================================
-# PATHWAY MAPS — keys are RMP department strings, values are pathway labels
-# Add any unmapped departments printed at the end into the appropriate list.
+# COURSE PREFIX HELPERS
+# Subjects are derived from course codes (e.g. "MAT 1033" -> "MAT")
+# so no manual mapping is needed — works the same across all schools.
 # ==========================================================================
+
+def _course_prefix(course_code):
+    """Extract subject prefix from a course code. 'MAT 1033' -> 'MAT'."""
+    parts = course_code.strip().split()
+    if parts and parts[0].isalpha():
+        return parts[0].upper()
+    return ""
+
+def _subjects_from_courses(courses_str):
+    """Return sorted unique subject prefixes from a semicolon-separated course list."""
+    if not courses_str:
+        return ""
+    prefixes = set()
+    for c in courses_str.split(";"):
+        p = _course_prefix(c.strip())
+        if p:
+            prefixes.add(p)
+    return "; ".join(sorted(prefixes))
+
 
 _BC_PATHWAY_MAP = {
     "Arts, Humanities, Communication & Design": [
@@ -370,24 +390,8 @@ def _format_tags(tags_dict):
     return "; ".join(f"{n} ({c})" for n, c in sorted(tags_dict.items(), key=lambda x: -x[1]))
 
 
-def _map_dept_to_pathway(dept_str, school_name_lower):
-    lookup = _SCHOOL_LOOKUPS.get(school_name_lower, {})
-    depts = [d.strip() for d in dept_str.split(";")]
-    pathways, unmapped = [], []
-    for d in depts:
-        p = lookup.get(d.lower())
-        if p is None:
-            if d not in ("", "Administration", "Advising", "Not Specified",
-                         "Select department"):
-                unmapped.append(d)
-            p = "Other"
-        if p not in pathways:
-            pathways.append(p)
-    return "; ".join(pathways), unmapped
-
-
 def clean_and_merge(professors):
-    """Deduplicate, merge multi-dept rows, map pathways, return list of dicts."""
+    """Deduplicate, merge multi-dept rows, derive subjects from courses."""
     # Normalize names
     for p in professors:
         p["first_name"] = p["first_name"].strip().title()
@@ -402,7 +406,7 @@ def clean_and_merge(professors):
 
     merged_rows, all_unmapped = [], []
 
-    for (school_lower, _, _), group in groups.items():
+    for (_, _, _), group in groups.items():
         if len(group) == 1:
             row = dict(group[0])
         else:
@@ -460,22 +464,14 @@ def clean_and_merge(professors):
             row["earliest_rating"]   = min(earliests)   if earliests   else ""
             row["most_recent_rating"] = max(most_recent) if most_recent else ""
 
-        # Map pathway
-        pathway_str, unmapped = _map_dept_to_pathway(row["department"], school_lower)
-        all_unmapped.extend(unmapped)
-        row["pathway"] = pathway_str
+        # Derive subjects from course codes
+        row["subjects"] = _subjects_from_courses(row.get("courses", ""))
 
         # Clean up internals
         row.pop("_id", None)
         row.pop("_num_ratings", None)
 
         merged_rows.append(row)
-
-    if all_unmapped:
-        unique_unmapped = sorted(set(all_unmapped))
-        print(f"\n  WARNING: Unmapped departments (set to 'Other') - add to script to fix:")
-        for d in unique_unmapped:
-            print(f"       - {d}")
 
     merged_rows.sort(key=lambda r: (r["school"], r["last_name"].lower(), r["first_name"].lower()))
     return merged_rows
@@ -486,7 +482,7 @@ def clean_and_merge(professors):
 # ==========================================================================
 
 COLS = [
-    "school", "first_name", "last_name", "pathway",
+    "school", "first_name", "last_name", "department", "subjects",
     "avg_rating", "num_ratings", "avg_difficulty", "would_take_again_pct",
     "tags", "r1", "r2", "r3", "r4", "r5",
     "courses", "earliest_rating", "most_recent_rating",
