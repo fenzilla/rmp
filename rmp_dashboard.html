@@ -486,7 +486,7 @@
   <!-- Sidebar filters -->
   <div id="sidebar">
 
-    <div class="filter-section">
+    <div class="filter-section" id="school-section">
       <h3>School</h3>
       <div id="school-filters"></div>
     </div>
@@ -891,6 +891,8 @@ function loadData(csvText) {
 // BUILD SIDEBAR
 // ============================================================
 function buildSchoolFilters(schools) {
+  // Hide the school section entirely when only one school is loaded
+  document.getElementById("school-section").style.display = schools.length <= 1 ? "none" : "";
   const container = document.getElementById("school-filters");
   container.innerHTML = "";
   schools.forEach(school => {

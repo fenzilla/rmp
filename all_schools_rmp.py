@@ -32,8 +32,8 @@ HEADERS = {
 
 SCHOOLS_TO_SCRAPE = [
     "Broward College",
-    "Florida Atlantic University",
-    "Florida International University",
+    # "Florida Atlantic University",
+    # "Florida International University",
 ]
 
 # ==========================================================================
