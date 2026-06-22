@@ -493,6 +493,7 @@
 
     <div class="filter-section">
       <h3>Subject (course prefix)</h3>
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;">Based on course codes from BC ratings</div>
       <div id="pathway-filters"></div>
     </div>
 
@@ -1018,8 +1019,11 @@ function _doFilter() {
     }
     if (d.num_ratings < state.minCount) return false;
     if (state.maxCount < maxCount && d.num_ratings > state.maxCount) return false;
-    if (state.dateFrom && d.most_recent_rating && d.most_recent_rating < state.dateFrom) return false;
-    if (state.dateTo   && d.most_recent_rating && d.most_recent_rating > state.dateTo)   return false;
+    if (state.dateFrom) {
+      if (!d.most_recent_rating) return false; // no date data — exclude when filter active
+      if (d.most_recent_rating < state.dateFrom) return false;
+    }
+    if (state.dateTo && d.most_recent_rating && d.most_recent_rating > state.dateTo) return false;
     return true;
   });
 
@@ -1067,9 +1071,8 @@ function renderTables() {
   const sortCol = document.getElementById("sort-col").value;
   const sortDir = document.getElementById("sort-dir").value;
 
-  // Left table — sorted by avg_rating desc, capped at ROW_LIMIT
+  // Left table — column header click controls sort; sidebar dropdown is ignored here
   let leftData = sortData(filteredData, leftSort.col, leftSort.dir);
-  if (sortCol) leftData = sortData(leftData, sortCol, sortDir);
   const leftSlice = leftData.slice(0, ROW_LIMIT);
   const leftBody = document.getElementById("left-body");
   leftBody.innerHTML = leftSlice.map(d => {
@@ -1171,7 +1174,9 @@ document.getElementById("reset-btn").addEventListener("click", () => {
   state.pathways = new Set(pathways);
   state.minRating = 0; state.maxRating = 5;
   state.minCount  = 0; state.maxCount  = maxCount;
-  state.dateFrom  = ""; state.dateTo   = "";
+  const _fourYearsAgo = new Date(); _fourYearsAgo.setFullYear(_fourYearsAgo.getFullYear() - 4);
+  const _defaultFrom = _fourYearsAgo.toISOString().slice(0, 10);
+  state.dateFrom  = _defaultFrom; state.dateTo = "";
 
   // Reset UI
   document.getElementById("min-rating").value = 0;
@@ -1182,7 +1187,7 @@ document.getElementById("reset-btn").addEventListener("click", () => {
   document.getElementById("max-count").value = maxCount;
   document.getElementById("min-count-val").textContent = "0";
   document.getElementById("max-count-val").textContent = maxCount + "+";
-  document.getElementById("date-from").value = "";
+  document.getElementById("date-from").value = _defaultFrom;
   document.getElementById("date-to").value   = "";
 
   document.querySelectorAll("#school-filters input").forEach(cb => cb.checked = true);
