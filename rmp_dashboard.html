@@ -855,11 +855,6 @@ function loadData(csvText) {
   maxCount = Math.max(...allData.map(d => d.num_ratings), 100);
   state.maxCount = maxCount;
 
-  // Default date filter: last 4 years
-  const fourYearsAgo = new Date();
-  fourYearsAgo.setFullYear(fourYearsAgo.getFullYear() - 4);
-  const defaultFrom = fourYearsAgo.toISOString().slice(0, 10);
-
   // Init state
   state.schools  = new Set(schools);
   state.pathways = new Set(pathways);
@@ -867,11 +862,8 @@ function loadData(csvText) {
   state.maxRating = 5;
   state.minCount  = 0;
   state.maxCount  = maxCount;
-  state.dateFrom  = defaultFrom;
+  state.dateFrom  = "";
   state.dateTo    = "";
-
-  // Reflect default date in UI
-  document.getElementById("date-from").value = defaultFrom;
 
   // Build sidebar
   buildSchoolFilters(schools);
@@ -1021,11 +1013,8 @@ function _doFilter() {
     }
     if (d.num_ratings < state.minCount) return false;
     if (state.maxCount < maxCount && d.num_ratings > state.maxCount) return false;
-    if (state.dateFrom) {
-      if (!d.most_recent_rating) return false; // no date data — exclude when filter active
-      if (d.most_recent_rating < state.dateFrom) return false;
-    }
-    if (state.dateTo && d.most_recent_rating && d.most_recent_rating > state.dateTo) return false;
+    if (state.dateFrom && d.most_recent_rating && d.most_recent_rating < state.dateFrom) return false;
+    if (state.dateTo   && d.most_recent_rating && d.most_recent_rating > state.dateTo)   return false;
     return true;
   });
 
