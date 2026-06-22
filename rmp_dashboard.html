@@ -854,6 +854,11 @@ function loadData(csvText) {
   maxCount = Math.max(...allData.map(d => d.num_ratings), 100);
   state.maxCount = maxCount;
 
+  // Default date filter: last 4 years
+  const fourYearsAgo = new Date();
+  fourYearsAgo.setFullYear(fourYearsAgo.getFullYear() - 4);
+  const defaultFrom = fourYearsAgo.toISOString().slice(0, 10);
+
   // Init state
   state.schools  = new Set(schools);
   state.pathways = new Set(pathways);
@@ -861,8 +866,11 @@ function loadData(csvText) {
   state.maxRating = 5;
   state.minCount  = 0;
   state.maxCount  = maxCount;
-  state.dateFrom  = "";
+  state.dateFrom  = defaultFrom;
   state.dateTo    = "";
+
+  // Reflect default date in UI
+  document.getElementById("date-from").value = defaultFrom;
 
   // Build sidebar
   buildSchoolFilters(schools);
@@ -991,24 +999,25 @@ function initSliders() {
   });
 }
 
-// ============================================================
-// FILTER
-// ============================================================
+const ROW_LIMIT = 300; // max rows rendered per table — keeps DOM fast
+
+// Debounce: wait 80ms after last change before re-rendering
+let _filterTimer = null;
 function applyFilters() {
+  clearTimeout(_filterTimer);
+  _filterTimer = setTimeout(_doFilter, 80);
+}
+
+function _doFilter() {
   filteredData = allData.filter(d => {
-    // School
     if (!state.schools.has(d.school)) return false;
-    // Pathway
-    const profs = d.pathway ? d.pathway.split(";").map(p => p.trim()) : ["Other"];
-    if (!profs.some(p => state.pathways.has(p))) return false;
-    // Rating
+    const subjects = d.pathway ? d.pathway.split(";").map(p => p.trim()) : [];
+    if (subjects.length && !subjects.some(p => state.pathways.has(p))) return false;
     if (d.num_ratings > 0) {
       if (d.avg_rating < state.minRating || d.avg_rating > state.maxRating) return false;
     }
-    // Count
     if (d.num_ratings < state.minCount) return false;
     if (state.maxCount < maxCount && d.num_ratings > state.maxCount) return false;
-    // Date
     if (state.dateFrom && d.most_recent_rating && d.most_recent_rating < state.dateFrom) return false;
     if (state.dateTo   && d.most_recent_rating && d.most_recent_rating > state.dateTo)   return false;
     return true;
@@ -1058,48 +1067,52 @@ function renderTables() {
   const sortCol = document.getElementById("sort-col").value;
   const sortDir = document.getElementById("sort-dir").value;
 
-  // Left table
+  // Left table — sorted by avg_rating desc, capped at ROW_LIMIT
   let leftData = sortData(filteredData, leftSort.col, leftSort.dir);
-  // If sidebar sort is active, use it for primary sort
   if (sortCol) leftData = sortData(leftData, sortCol, sortDir);
-  const maxRating = 5;
+  const leftSlice = leftData.slice(0, ROW_LIMIT);
   const leftBody = document.getElementById("left-body");
-  leftBody.innerHTML = leftData.map(d => {
-    const name = `${d.last_name}, ${d.first_name}`;
-    const pct  = (d.avg_rating / maxRating * 100).toFixed(1);
+  leftBody.innerHTML = leftSlice.map(d => {
+    const name  = `${d.last_name}, ${d.first_name}`;
+    const pct   = (d.avg_rating / 5 * 100).toFixed(1);
     const color = ratingColor(d.avg_rating);
     return `<tr>
       <td><span class="pathway-tag" title="${d.pathway}">${abbr(d.pathway)}</span></td>
       <td title="${name}">${name}</td>
       <td><span class="school-tag ${schoolClass(d.school)}">${schoolAbbr(d.school)}</span></td>
-      <td>
-        <div class="bar-cell">
-          <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
-          <span class="bar-num">${d.num_ratings > 0 ? d.avg_rating.toFixed(2) : '—'}</span>
-        </div>
-      </td>
+      <td><div class="bar-cell">
+        <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+        <span class="bar-num">${d.num_ratings > 0 ? d.avg_rating.toFixed(2) : '—'}</span>
+      </div></td>
     </tr>`;
   }).join("");
+  if (leftData.length > ROW_LIMIT) {
+    leftBody.innerHTML += `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);font-size:11px;padding:6px;">
+      Showing top ${ROW_LIMIT} of ${leftData.length.toLocaleString()} — use filters to narrow results</td></tr>`;
+  }
 
-  // Right table — sorted by num_ratings desc by default
+  // Right table — sorted by num_ratings desc, capped at ROW_LIMIT
   let rightData = sortData(filteredData, rightSort.col, rightSort.dir);
-  const maxN = Math.max(...rightData.map(d => d.num_ratings), 1);
+  const maxN = Math.max(...rightData.slice(0, ROW_LIMIT).map(d => d.num_ratings), 1);
+  const rightSlice = rightData.slice(0, ROW_LIMIT);
   const rightBody = document.getElementById("right-body");
-  rightBody.innerHTML = rightData.map(d => {
+  rightBody.innerHTML = rightSlice.map(d => {
     const name = `${d.last_name}, ${d.first_name}`;
     const pct  = (d.num_ratings / maxN * 100).toFixed(1);
     return `<tr>
       <td><span class="pathway-tag" title="${d.pathway}">${abbr(d.pathway)}</span></td>
       <td title="${name}">${name}</td>
       <td><span class="school-tag ${schoolClass(d.school)}">${schoolAbbr(d.school)}</span></td>
-      <td>
-        <div class="bar-cell">
-          <div class="bar-bg"><div class="bar-fill count-fill" style="width:${pct}%;"></div></div>
-          <span class="bar-num">${d.num_ratings.toLocaleString()}</span>
-        </div>
-      </td>
+      <td><div class="bar-cell">
+        <div class="bar-bg"><div class="bar-fill count-fill" style="width:${pct}%;"></div></div>
+        <span class="bar-num">${d.num_ratings.toLocaleString()}</span>
+      </div></td>
     </tr>`;
   }).join("");
+  if (rightData.length > ROW_LIMIT) {
+    rightBody.innerHTML += `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);font-size:11px;padding:6px;">
+      Showing top ${ROW_LIMIT} of ${rightData.length.toLocaleString()} — use filters to narrow results</td></tr>`;
+  }
 }
 
 // ============================================================
